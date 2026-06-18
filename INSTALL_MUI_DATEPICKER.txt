@@ -1,0 +1,3 @@
+# If you don't have @mui/x-date-pickers installed, run:
+# npm install @mui/x-date-pickers @mui/material @mui/icons-material @emotion/react @emotion/styled
+# This enables the use of MUI's DatePicker component for a better birthday selection UI.
