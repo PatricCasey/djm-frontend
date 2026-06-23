@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { listCalls, listAllCalls, createCall, updateCall, deleteCall } from '../api/calls.api';
+import { listCalls, listAllCalls, listMyProfiles, createCall, updateCall, deleteCall } from '../api/calls.api';
 import { listProfiles, listUsers } from '../api/admin.api';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
@@ -30,8 +30,6 @@ import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import VideoCallIcon from '@mui/icons-material/VideoCall';
-import AccessTimeIcon from '@mui/icons-material/AccessTime';
-import PersonIcon from '@mui/icons-material/Person';
 import LinkIcon from '@mui/icons-material/Link';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
@@ -1071,54 +1069,6 @@ function TableView({ calls, onEdit, onDelete }) {
     );
 }
 
-// ─── Caller List View ─────────────────────────────────────────────────────────
-function CallerList({ calls, onEdit, onDelete }) {
-    return calls.length === 0 ? (
-        <Paper elevation={0} sx={{ p: 5, textAlign: 'center', borderRadius: 3, border: '1px solid rgba(0,0,0,0.06)' }}>
-            <PhoneIcon sx={{ fontSize: 52, color: '#cfd8dc', mb: 1 }} />
-            <Typography sx={{ color: '#90a4ae', fontWeight: 500 }}>No calls recorded yet</Typography>
-        </Paper>
-    ) : calls.map(call => (
-        <Paper key={call._id} elevation={0} sx={{ p: 2.5, mb: 2, borderRadius: 2.5, border: '1px solid rgba(0,0,0,0.06)', background: '#fff', transition: 'all 0.2s ease', '&:hover': { borderColor: '#90caf9', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' } }}>
-            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
-                <Box sx={{ flex: 1 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
-                        {call.profile && <Chip icon={<PersonIcon />} label={call.profile.name || call.profile.email} size="small" sx={{ fontWeight: 600, background: '#e3f2fd', color: '#1565c0' }} />}
-                        {call.step && <Chip label={call.step} size="small" sx={{ fontWeight: 600, background: `${STEP_COLORS[call.step]}22`, color: STEP_COLORS[call.step], border: `1px solid ${STEP_COLORS[call.step]}44` }} />}
-                        {call.type && <Chip icon={call.type === 'video' ? <VideoCallIcon /> : <PhoneIcon />} label={call.type} size="small" sx={{ fontWeight: 500, background: '#f3e5f5', color: '#7b1fa2' }} />}
-                        {call.status && <Chip label={call.status} size="small" sx={{ fontWeight: 600, background: `${STATUS_COLORS[call.status]}18`, color: STATUS_COLORS[call.status] }} />}
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-                        {(call.date || call.time) && (
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                <AccessTimeIcon sx={{ fontSize: 15, color: '#90a4ae' }} />
-                                <Typography variant="body2" sx={{ color: '#78909c', fontSize: '0.82rem' }}>
-                                    {call.date ? cstLocaleDate(call.date.slice(0, 10)) : ''}{call.date && call.time ? ' ' : ''}{call.time || ''}
-                                </Typography>
-                            </Box>
-                        )}
-                        {call.duration != null && <Typography variant="body2" sx={{ color: '#78909c', fontSize: '0.82rem' }}>{call.duration} min</Typography>}
-                    </Box>
-                    {call.note && <Typography variant="body2" sx={{ color: '#37474f', fontSize: '0.82rem', mt: 0.5, fontStyle: 'italic' }}>{call.note}</Typography>}
-                    {call.recruiterNameOrGmail && <Typography variant="body2" sx={{ color: '#546e7a', fontSize: '0.82rem', mt: 0.5 }}>Recruiter: {call.recruiterNameOrGmail}</Typography>}
-                    {call.recordingLink && (
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
-                            <LinkIcon sx={{ fontSize: 14, color: '#90a4ae' }} />
-                            <a href={call.recordingLink} target="_blank" rel="noopener noreferrer" style={{ color: '#1565c0', fontSize: '0.82rem', textDecoration: 'none' }}>
-                                {call.recordingLink.length > 60 ? call.recordingLink.slice(0, 60) + '...' : call.recordingLink}
-                            </a>
-                        </Box>
-                    )}
-                </Box>
-                <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
-                    <Tooltip title="Edit"><IconButton size="small" onClick={() => onEdit(call)} sx={{ color: '#1565c0' }}><EditIcon fontSize="small" /></IconButton></Tooltip>
-                    <Tooltip title="Delete"><IconButton size="small" onClick={() => onDelete(call._id)} sx={{ color: '#ef5350' }}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
-                </Box>
-            </Box>
-        </Paper>
-    ));
-}
-
 // ─── Main ─────────────────────────────────────────────────────────────────────
 const Calls = ({ user }) => {
     const isAdmin = user?.role === 'admin';
@@ -1126,7 +1076,7 @@ const Calls = ({ user }) => {
     const [profiles, setProfiles] = useState([]);
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [adminTab, setAdminTab] = useState(0); // 0 = week, 1 = table
+    const [viewTab, setViewTab] = useState(0); // 0 = week, 1 = table
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editCall, setEditCall] = useState(null);
     const [deleteId, setDeleteId] = useState(null);
@@ -1142,7 +1092,10 @@ const Calls = ({ user }) => {
     }, [isAdmin]);
 
     useEffect(() => { fetchCalls(); }, [fetchCalls]);
-    useEffect(() => { listProfiles().then(setProfiles).catch(() => {}); }, []);
+    useEffect(() => {
+        const loadProfiles = isAdmin ? listProfiles : listMyProfiles;
+        loadProfiles().then(setProfiles).catch(() => setProfiles([]));
+    }, [isAdmin]);
     useEffect(() => { if (isAdmin) listUsers().then(setUsers).catch(() => {}); }, [isAdmin]);
 
     const openCreate = (prefilledDate = '', prefilledTime = '', prefilledDuration = '') => {
@@ -1164,7 +1117,7 @@ const Calls = ({ user }) => {
     const handleDayBack = (dayOrNull) => setSelectedDay(dayOrNull);
 
     return (
-        <Box sx={{ p: 3, maxWidth: isAdmin ? 1200 : 1000, mx: 'auto' }}>
+        <Box sx={{ p: 3, maxWidth: 1200, mx: 'auto' }}>
             {/* Page Header */}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
                 <Box sx={{ width: 40, height: 40, borderRadius: 2, background: 'linear-gradient(135deg, #0d47a1, #1976d2)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(13,71,161,0.25)' }}>
@@ -1186,7 +1139,7 @@ const Calls = ({ user }) => {
                 <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}>
                     <CircularProgress size={36} sx={{ color: '#1565c0' }} />
                 </Box>
-            ) : isAdmin ? (
+            ) : (
                 <>
                     {selectedDay ? (
                         <DayDetailView
@@ -1198,7 +1151,7 @@ const Calls = ({ user }) => {
                         />
                     ) : (
                         <>
-                            <Tabs value={adminTab} onChange={(_, v) => setAdminTab(v)}
+                            <Tabs value={viewTab} onChange={(_, v) => setViewTab(v)}
                                 sx={{ mb: 2, borderBottom: '1px solid #e0e0e0', minHeight: 40 }}
                                 slotProps={{ indicator: { style: { background: '#1a73e8' } } }}>
                                 <Tab icon={<CalendarMonthIcon fontSize="small" />} iconPosition="start" label="Week"
@@ -1206,13 +1159,11 @@ const Calls = ({ user }) => {
                                 <Tab icon={<TableChartIcon fontSize="small" />} iconPosition="start" label="Table"
                                     sx={{ textTransform: 'none', fontWeight: 500, minHeight: 40, color: '#5f6368', fontSize: '0.9rem', '&.Mui-selected': { color: '#1a73e8', fontWeight: 600 } }} />
                             </Tabs>
-                            {adminTab === 0 && <WeekView calls={calls} onDayDetail={setSelectedDay} onAdd={openCreate} onEdit={openEdit} />}
-                            {adminTab === 1 && <TableView calls={calls} onEdit={openEdit} onDelete={setDeleteId} />}
+                            {viewTab === 0 && <WeekView calls={calls} onDayDetail={setSelectedDay} onAdd={openCreate} onEdit={openEdit} />}
+                            {viewTab === 1 && <TableView calls={calls} onEdit={openEdit} onDelete={setDeleteId} />}
                         </>
                     )}
                 </>
-            ) : (
-                <CallerList calls={calls} onEdit={openEdit} onDelete={setDeleteId} />
             )}
 
             <CallFormDialog open={dialogOpen} onClose={() => setDialogOpen(false)} editCall={editCall} profiles={profiles} onSaved={fetchCalls} isAdmin={isAdmin} users={users} currentUser={user} />

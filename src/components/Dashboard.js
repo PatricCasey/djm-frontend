@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { generateResume, getMyProfiles } from '../api/resume.api';
+import { generateResume, generateApplicationAnswer, getMyProfiles } from '../api/resume.api';
 import { listProfiles } from '../api/admin.api';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -21,6 +21,7 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import GavelIcon from '@mui/icons-material/Gavel';
 import PersonIcon from '@mui/icons-material/Person';
+import QuestionAnswerIcon from '@mui/icons-material/QuestionAnswer';
 
 const Dashboard = ({ user, onResumeGenerated }) => {
     const [jobUrl, setJobUrl] = useState('');
@@ -34,6 +35,10 @@ const Dashboard = ({ user, onResumeGenerated }) => {
     const [clearanceWords, setClearanceWords] = useState([]);
     const [profiles, setProfiles] = useState([]);
     const [selectedProfileId, setSelectedProfileId] = useState('');
+    const [question, setQuestion] = useState('');
+    const [answer, setAnswer] = useState('');
+    const [answerLoading, setAnswerLoading] = useState(false);
+    const [answerError, setAnswerError] = useState('');
     const match = jobUrl.match(/jk=([^&]+)/);
     const jkValue = match ? match[1] : jobUrl;
 
@@ -84,6 +89,9 @@ const Dashboard = ({ user, onResumeGenerated }) => {
         setLoading(true);
         setError('');
         setResume('');
+        setQuestion('');
+        setAnswer('');
+        setAnswerError('');
         try {
             const pdfBlob = await generateResume(selectedProfileId, jobUrl, jobDesc);
             setResume('Resume generated!');
@@ -104,6 +112,33 @@ const Dashboard = ({ user, onResumeGenerated }) => {
         finally {
             setLoading(false);
             callInProgress.current = false;
+        }
+    };
+
+    const handleGenerateAnswer = async () => {
+        if (!selectedProfileId) {
+            setAnswerError(isBidder ? 'No profile assigned. Contact your admin.' : 'Please select a profile');
+            return;
+        }
+        if (!jobDesc.trim()) {
+            setAnswerError('Job description is required');
+            return;
+        }
+        if (!question.trim()) {
+            setAnswerError('Enter a question first');
+            return;
+        }
+
+        setAnswerLoading(true);
+        setAnswerError('');
+        setAnswer('');
+        try {
+            const data = await generateApplicationAnswer(selectedProfileId, jobUrl, jobDesc, question);
+            setAnswer(data.answer || '');
+        } catch (err) {
+            setAnswerError(err.response?.data?.error || 'Failed to generate answer');
+        } finally {
+            setAnswerLoading(false);
         }
     };
 
@@ -361,54 +396,131 @@ const Dashboard = ({ user, onResumeGenerated }) => {
                 </Paper>
 
                 {/* Right Preview Panel */}
-                <Box sx={{ flex: 1, p: 3, display: 'flex', flexDirection: 'column' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                        <Typography variant="h5" sx={{ color: '#263238', fontWeight: 700, fontSize: '1.3rem' }}>
-                            Preview
-                        </Typography>
-                        {pdfUrl && (
-                            <Chip
-                                icon={<CheckCircleIcon />}
-                                label="PDF Ready"
-                                color="success"
-                                variant="outlined"
-                                size="small"
-                                sx={{ fontWeight: 600 }}
-                            />
-                        )}
+                <Box sx={{ flex: 1, p: 3, display: 'grid', gridTemplateColumns: 'minmax(620px, 0.58fr) minmax(420px, 0.42fr)', gap: 2, minWidth: 0 }}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                            <Typography variant="h5" sx={{ color: '#263238', fontWeight: 700, fontSize: '1.3rem' }}>
+                                Preview
+                            </Typography>
+                            {pdfUrl && (
+                                <Chip
+                                    icon={<CheckCircleIcon />}
+                                    label="PDF Ready"
+                                    color="success"
+                                    variant="outlined"
+                                    size="small"
+                                    sx={{ fontWeight: 600 }}
+                                />
+                            )}
+                        </Box>
+                        <Paper
+                            elevation={0}
+                            sx={{
+                                flex: 1,
+                                minHeight: 0,
+                                border: '1px solid rgba(0,0,0,0.08)',
+                                background: '#fff',
+                                borderRadius: 3,
+                                overflow: 'hidden',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+                            }}
+                        >
+                            {pdfUrl ? (
+                                <iframe
+                                    src={`${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+                                    title="Resume Preview"
+                                    width="100%"
+                                    height="100%"
+                                    style={{ border: 'none' }}
+                                />
+                            ) : (
+                                <Box sx={{ textAlign: 'center', p: 4 }}>
+                                    <DescriptionOutlinedIcon sx={{ fontSize: 64, color: '#cfd8dc', mb: 2 }} />
+                                    <Typography sx={{ color: '#90a4ae', fontSize: '1rem', fontWeight: 500 }}>
+                                        Paste a job description and click Generate
+                                    </Typography>
+                                    <Typography sx={{ color: '#b0bec5', fontSize: '0.85rem', mt: 0.5 }}>
+                                        Your resume will appear here
+                                    </Typography>
+                                </Box>
+                            )}
+                        </Paper>
                     </Box>
+
                     <Paper
                         elevation={0}
                         sx={{
-                            flex: 1,
+                            alignSelf: 'stretch',
+                            p: 2,
                             border: '1px solid rgba(0,0,0,0.08)',
                             background: '#fff',
                             borderRadius: 3,
-                            overflow: 'hidden',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
                             boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            overflow: 'hidden',
                         }}
                     >
-                        {pdfUrl ? (
-                            <iframe
-                                src={pdfUrl}
-                                title="Resume Preview"
-                                width="100%"
-                                height="100%"
-                                style={{ border: 'none' }}
-                            />
-                        ) : (
-                            <Box sx={{ textAlign: 'center', p: 4 }}>
-                                <DescriptionOutlinedIcon sx={{ fontSize: 64, color: '#cfd8dc', mb: 2 }} />
-                                <Typography sx={{ color: '#90a4ae', fontSize: '1rem', fontWeight: 500 }}>
-                                    Paste a job description and click Generate
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                            <QuestionAnswerIcon sx={{ color: '#1565c0', fontSize: 22 }} />
+                            <Typography variant="h6" sx={{ color: '#263238', fontWeight: 700, fontSize: '1.05rem', flex: 1 }}>
+                                Question & Answer
+                            </Typography>
+                            {answerLoading && <CircularProgress size={20} sx={{ color: '#1565c0' }} />}
+                        </Box>
+                        <TextField
+                            label="Application Question"
+                            value={question}
+                            onChange={e => setQuestion(e.target.value)}
+                            fullWidth
+                            multiline
+                            minRows={2}
+                            maxRows={4}
+                            size="small"
+                            placeholder="Paste the company's question here"
+                            sx={{
+                                mb: 1.5,
+                                '& .MuiOutlinedInput-root': {
+                                    background: '#f8fafc',
+                                    borderRadius: 2,
+                                    '&:hover fieldset': { borderColor: '#90caf9' },
+                                    '&.Mui-focused fieldset': { borderColor: '#1565c0' },
+                                },
+                            }}
+                        />
+                        <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                            <Button
+                                variant="contained"
+                                onClick={handleGenerateAnswer}
+                                disabled={answerLoading || loading}
+                                startIcon={answerLoading ? null : <AutoAwesomeIcon />}
+                                fullWidth
+                                sx={{
+                                    borderRadius: 2,
+                                    fontWeight: 700,
+                                    py: 1.15,
+                                    textTransform: 'none',
+                                    background: 'linear-gradient(135deg, #0d47a1, #1976d2)',
+                                    '&:hover': { background: 'linear-gradient(135deg, #002171, #0d47a1)' },
+                                }}
+                            >
+                                {answerLoading ? 'Generating...' : 'Generate Answer'}
+                            </Button>
+                        </Box>
+                        {answerError && (
+                            <Paper elevation={0} sx={{ mt: 1.5, p: 1.25, background: '#fce4ec', borderRadius: 2, border: '1px solid #ef9a9a' }}>
+                                <Typography sx={{ color: '#c62828', fontWeight: 500, fontSize: '0.85rem' }}>{answerError}</Typography>
+                            </Paper>
+                        )}
+                        {answer && (
+                            <Paper elevation={0} sx={{ mt: 1.5, p: 1.5, background: '#f8fafc', borderRadius: 2, border: '1px solid #dbe4ef', flex: 1, minHeight: 0, overflowY: 'auto' }}>
+                                <Typography sx={{ color: '#263238', fontSize: '0.9rem', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>
+                                    {answer}
                                 </Typography>
-                                <Typography sx={{ color: '#b0bec5', fontSize: '0.85rem', mt: 0.5 }}>
-                                    Your resume will appear here
-                                </Typography>
-                            </Box>
+                            </Paper>
                         )}
                     </Paper>
                 </Box>

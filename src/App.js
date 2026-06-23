@@ -92,13 +92,10 @@ function App() {
                     />
                 )}
                 {step === 'register' && (
-                    <>
-                        <Register onRegister={() => setStep('login')} />
-                        <Box sx={{ textAlign: 'center', mt: 2, pb: 4 }}>
-                            <Typography variant="body2" sx={{ color: '#546e7a' }}>Already have an account?</Typography>
-                            <Button variant="text" color="primary" onClick={() => setStep('login')} sx={{ fontWeight: 600 }}>Login</Button>
-                        </Box>
-                    </>
+                    <Register
+                        onRegister={() => setStep('login')}
+                        onGoLogin={() => setStep('login')}
+                    />
                 )}
                 {step === 'dashboard' && user && (
                     <>

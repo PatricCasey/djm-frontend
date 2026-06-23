@@ -16,6 +16,15 @@ export async function generateResume(profileId, jobUrl, jobDesc) {
     return res.data;
 }
 
+export async function generateApplicationAnswer(profileId, jobUrl, jobDesc, question) {
+    const res = await axios.post(
+        `${API}/api/resume/answer-question`,
+        { profileId, jobUrl, jobDesc, question },
+        { headers: authHeader() }
+    );
+    return res.data;
+}
+
 export async function searchResumes(keyword, page = 1) {
     const res = await axios.get(`${API}/api/resume/search`, {
         headers: authHeader(),

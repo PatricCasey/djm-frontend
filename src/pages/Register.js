@@ -7,11 +7,12 @@ import Typography from '@mui/material/Typography';
 import Paper from '@mui/material/Paper';
 import CircularProgress from '@mui/material/CircularProgress';
 import InputAdornment from '@mui/material/InputAdornment';
+import Divider from '@mui/material/Divider';
 import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import DescriptionIcon from '@mui/icons-material/Description';
 
-const Register = ({ onRegister }) => {
+const Register = ({ onRegister, onGoLogin }) => {
     const [form, setForm] = useState({
         email: '',
         password: '',
@@ -55,8 +56,9 @@ const Register = ({ onRegister }) => {
             sx={{
                 display: 'flex',
                 justifyContent: 'center',
-                alignItems: 'flex-start',
+                alignItems: 'center',
                 minHeight: '100vh',
+                px: 2,
                 py: 4,
                 background: 'linear-gradient(160deg, #e8edf5 0%, #d6e0f0 40%, #c9d6e8 100%)',
             }}
@@ -204,6 +206,35 @@ const Register = ({ onRegister }) => {
                             </Paper>
                         )}
                     </form>
+
+                    <Divider sx={{ my: 3, color: '#b0bec5', fontSize: '0.8rem' }}>or</Divider>
+
+                    <Box sx={{ textAlign: 'center' }}>
+                        <Typography variant="body2" sx={{ color: '#78909c' }}>
+                            Already have an account?
+                        </Typography>
+                        <Button
+                            variant="outlined"
+                            color="primary"
+                            onClick={onGoLogin}
+                            fullWidth
+                            sx={{
+                                mt: 1.5,
+                                borderRadius: 2.5,
+                                fontWeight: 600,
+                                textTransform: 'none',
+                                py: 1.2,
+                                borderColor: '#bbdefb',
+                                color: '#1565c0',
+                                '&:hover': {
+                                    borderColor: '#1565c0',
+                                    background: '#e3f2fd',
+                                },
+                            }}
+                        >
+                            Back to Login
+                        </Button>
+                    </Box>
                 </Box>
             </Paper>
         </Box>
