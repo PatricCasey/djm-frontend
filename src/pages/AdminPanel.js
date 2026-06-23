@@ -266,6 +266,20 @@ const AdminPanel = () => {
         setAssignSaving(false);
     };
 
+    const hasAssignedProfile = (user) => (
+        (user.role === 'bidder' && !!user.assignedProfile) ||
+        (user.role === 'caller' && (user.assignedProfiles || []).length > 0)
+    );
+
+    const handleRemoveUserProfile = async (user) => {
+        try {
+            const updated = user.role === 'bidder'
+                ? await assignProfile(user._id, '')
+                : await assignProfiles(user._id, []);
+            setUsers(u => u.map(x => x._id === updated._id ? updated : x));
+        } catch { }
+    };
+
     const handleDeleteProfile = async () => {
         if (!deleteProfileId) return;
         try {
@@ -411,6 +425,18 @@ const AdminPanel = () => {
                                                 '&:hover': { background: '#e3f2fd', borderColor: '#1565c0' },
                                             }}>
                                             Assign
+                                        </Button>
+                                    )}
+
+                                    {user.role !== 'admin' && hasAssignedProfile(user) && (
+                                        <Button size="small" variant="outlined"
+                                            onClick={() => handleRemoveUserProfile(user)}
+                                            sx={{
+                                                borderRadius: 2, textTransform: 'none', fontWeight: 600, fontSize: '0.78rem',
+                                                borderColor: '#ffcdd2', color: '#c62828',
+                                                '&:hover': { background: '#ffebee', borderColor: '#c62828' },
+                                            }}>
+                                            Remove Profile
                                         </Button>
                                     )}
                                 </Box>

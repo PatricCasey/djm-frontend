@@ -22,6 +22,7 @@ import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import GavelIcon from '@mui/icons-material/Gavel';
 import PersonIcon from '@mui/icons-material/Person';
 import QuestionAnswerIcon from '@mui/icons-material/QuestionAnswer';
+import DownloadIcon from '@mui/icons-material/Download';
 
 const Dashboard = ({ user, onResumeGenerated }) => {
     const [jobUrl, setJobUrl] = useState('');
@@ -31,6 +32,7 @@ const Dashboard = ({ user, onResumeGenerated }) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [pdfUrl, setPdfUrl] = useState(null);
+    const [pdfFileName, setPdfFileName] = useState('resume.pdf');
     const [clearanceDialog, setClearanceDialog] = useState(false);
     const [clearanceWords, setClearanceWords] = useState([]);
     const [profiles, setProfiles] = useState([]);
@@ -66,6 +68,36 @@ const Dashboard = ({ user, onResumeGenerated }) => {
         }
     }, [isCaller, isAdmin, isBidder]);
 
+    const sanitizeFilePart = (value, fallback) => {
+        const cleaned = String(value || '')
+            .trim()
+            .replace(/[^a-z0-9._-]+/gi, '-')
+            .replace(/^-+|-+$/g, '');
+        return cleaned || fallback;
+    };
+
+    const getResumeFileName = () => {
+        const selectedProfile = profiles.find(p => p._id === selectedProfileId);
+        const profileName = sanitizeFilePart(selectedProfile?.name, 'resume');
+        const jobKey = sanitizeFilePart(jkValue, 'job');
+        return `${profileName}-${jobKey}.pdf`;
+    };
+
+    const downloadPdf = (url, fileName) => {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        link.rel = 'noopener';
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.dispatchEvent(new MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+        }));
+        document.body.removeChild(link);
+    };
+
     const handleGenerate = async () => {
         if (callInProgress.current) return;
 
@@ -97,15 +129,10 @@ const Dashboard = ({ user, onResumeGenerated }) => {
             setResume('Resume generated!');
             if (onResumeGenerated) onResumeGenerated();
             const url = window.URL.createObjectURL(new Blob([pdfBlob], { type: 'application/pdf' }));
+            const fileName = getResumeFileName();
             setPdfUrl(url);
-            const selectedProfile = profiles.find(p => p._id === selectedProfileId);
-            const fileName = selectedProfile ? selectedProfile.name : 'resume';
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `${fileName}-${jkValue}.pdf`);
-            document.body.appendChild(link);
-            link.click();
-            link.parentNode.removeChild(link);
+            setPdfFileName(fileName);
+            downloadPdf(url, fileName);
         } catch (err) {
             setError('Failed to generate resume');
         }
@@ -113,6 +140,10 @@ const Dashboard = ({ user, onResumeGenerated }) => {
             setLoading(false);
             callInProgress.current = false;
         }
+    };
+
+    const handleDownloadCurrentResume = () => {
+        if (pdfUrl) downloadPdf(pdfUrl, pdfFileName);
     };
 
     const handleGenerateAnswer = async () => {
@@ -403,14 +434,32 @@ const Dashboard = ({ user, onResumeGenerated }) => {
                                 Preview
                             </Typography>
                             {pdfUrl && (
-                                <Chip
-                                    icon={<CheckCircleIcon />}
-                                    label="PDF Ready"
-                                    color="success"
-                                    variant="outlined"
-                                    size="small"
-                                    sx={{ fontWeight: 600 }}
-                                />
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <Chip
+                                        icon={<CheckCircleIcon />}
+                                        label="PDF Ready"
+                                        color="success"
+                                        variant="outlined"
+                                        size="small"
+                                        sx={{ fontWeight: 600 }}
+                                    />
+                                    <Button
+                                        size="small"
+                                        variant="outlined"
+                                        startIcon={<DownloadIcon />}
+                                        onClick={handleDownloadCurrentResume}
+                                        sx={{
+                                            borderRadius: 2,
+                                            textTransform: 'none',
+                                            fontWeight: 700,
+                                            borderColor: '#bbdefb',
+                                            color: '#1565c0',
+                                            '&:hover': { background: '#e3f2fd', borderColor: '#1565c0' },
+                                        }}
+                                    >
+                                        Download
+                                    </Button>
+                                </Box>
                             )}
                         </Box>
                         <Paper
