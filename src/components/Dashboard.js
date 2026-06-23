@@ -23,6 +23,7 @@ import GavelIcon from '@mui/icons-material/Gavel';
 import PersonIcon from '@mui/icons-material/Person';
 import QuestionAnswerIcon from '@mui/icons-material/QuestionAnswer';
 import DownloadIcon from '@mui/icons-material/Download';
+import ClearIcon from '@mui/icons-material/Clear';
 
 const Dashboard = ({ user, onResumeGenerated }) => {
     const [jobUrl, setJobUrl] = useState('');
@@ -146,6 +147,19 @@ const Dashboard = ({ user, onResumeGenerated }) => {
         if (pdfUrl) downloadPdf(pdfUrl, pdfFileName);
     };
 
+    const handleClearResume = () => {
+        if (pdfUrl) window.URL.revokeObjectURL(pdfUrl);
+        setPdfUrl(null);
+        setPdfFileName('resume.pdf');
+        setResume('');
+        setJobUrl('');
+        setJobDesc('');
+        setError('');
+        setQuestion('');
+        setAnswer('');
+        setAnswerError('');
+    };
+
     const handleGenerateAnswer = async () => {
         if (!selectedProfileId) {
             setAnswerError(isBidder ? 'No profile assigned. Contact your admin.' : 'Please select a profile');
@@ -245,9 +259,26 @@ const Dashboard = ({ user, onResumeGenerated }) => {
                 >
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
                         <DescriptionOutlinedIcon sx={{ color: '#1565c0', fontSize: 22 }} />
-                        <Typography variant="h6" sx={{ color: '#1565c0', fontWeight: 700, fontSize: '1.05rem' }}>
+                        <Typography variant="h6" sx={{ color: '#1565c0', fontWeight: 700, fontSize: '1.05rem', flex: 1 }}>
                             Job Details
                         </Typography>
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            onClick={handleClearResume}
+                            disabled={loading}
+                            startIcon={<ClearIcon />}
+                            sx={{
+                                borderRadius: 2,
+                                textTransform: 'none',
+                                fontWeight: 700,
+                                borderColor: '#cfd8dc',
+                                color: '#546e7a',
+                                '&:hover': { background: '#eceff1', borderColor: '#90a4ae' },
+                            }}
+                        >
+                            Clear
+                        </Button>
                     </Box>
 
                     {showProfileSelector && (
@@ -344,47 +375,49 @@ const Dashboard = ({ user, onResumeGenerated }) => {
                     />
 
                     <Box sx={{ position: 'relative', mt: 'auto' }}>
-                        <Button
-                            variant="contained"
-                            fullWidth
-                            onClick={handleGenerate}
-                            disabled={loading}
-                            startIcon={loading ? null : <AutoAwesomeIcon />}
-                            sx={{
-                                fontWeight: 700,
-                                fontSize: '0.95rem',
-                                py: 1.4,
-                                borderRadius: 2.5,
-                                background: 'linear-gradient(135deg, #0d47a1 0%, #1565c0 50%, #1976d2 100%)',
-                                boxShadow: '0 4px 14px 0 rgba(13, 71, 161, 0.35)',
-                                textTransform: 'none',
-                                letterSpacing: '0.3px',
-                                transition: 'all 0.3s ease',
-                                '&:hover': {
-                                    background: 'linear-gradient(135deg, #002171 0%, #0d47a1 50%, #1565c0 100%)',
-                                    boxShadow: '0 6px 20px 0 rgba(13, 71, 161, 0.45)',
-                                    transform: 'translateY(-1px)',
-                                },
-                                '&:disabled': {
-                                    background: '#b0bec5',
-                                },
-                            }}
-                        >
-                            {loading ? 'Generating...' : 'Generate Resume'}
-                        </Button>
-                        {loading && (
-                            <CircularProgress
-                                size={24}
+                        <Box sx={{ position: 'relative', flex: 1, minWidth: 0 }}>
+                            <Button
+                                variant="contained"
+                                fullWidth
+                                onClick={handleGenerate}
+                                disabled={loading}
+                                startIcon={loading ? null : <AutoAwesomeIcon />}
                                 sx={{
-                                    position: 'absolute',
-                                    top: '50%',
-                                    left: '50%',
-                                    mt: '-12px',
-                                    ml: '-12px',
-                                    color: '#fff',
+                                    fontWeight: 700,
+                                    fontSize: '0.95rem',
+                                    py: 1.4,
+                                    borderRadius: 2.5,
+                                    background: 'linear-gradient(135deg, #0d47a1 0%, #1565c0 50%, #1976d2 100%)',
+                                    boxShadow: '0 4px 14px 0 rgba(13, 71, 161, 0.35)',
+                                    textTransform: 'none',
+                                    letterSpacing: '0.3px',
+                                    transition: 'all 0.3s ease',
+                                    '&:hover': {
+                                        background: 'linear-gradient(135deg, #002171 0%, #0d47a1 50%, #1565c0 100%)',
+                                        boxShadow: '0 6px 20px 0 rgba(13, 71, 161, 0.45)',
+                                        transform: 'translateY(-1px)',
+                                    },
+                                    '&:disabled': {
+                                        background: '#b0bec5',
+                                    },
                                 }}
-                            />
-                        )}
+                            >
+                                {loading ? 'Generating...' : 'Generate Resume'}
+                            </Button>
+                            {loading && (
+                                <CircularProgress
+                                    size={24}
+                                    sx={{
+                                        position: 'absolute',
+                                        top: '50%',
+                                        left: '50%',
+                                        mt: '-12px',
+                                        ml: '-12px',
+                                        color: '#fff',
+                                    }}
+                                />
+                            )}
+                        </Box>
                     </Box>
 
                     {error && (
