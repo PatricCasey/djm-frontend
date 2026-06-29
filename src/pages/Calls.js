@@ -147,7 +147,8 @@ function layoutCalls(timedCalls) {
 
 const emptyForm = {
     caller: '', profile: '', date: '', time: '', step: '', type: '',
-    status: 'not-completed', duration: '', note: '', recordingLink: '', recruiterNameOrGmail: '',
+    status: 'not-completed', duration: '', note: '', recordingLink: '', meetingLink: '',
+    recruiterNameOrGmail: '', companyName: '', jobDescription: '', resume: '',
 };
 
 const inputSx = {
@@ -178,7 +179,11 @@ function CallFormDialog({ open, onClose, editCall, profiles, onSaved, isAdmin, u
                 duration: editCall.duration ?? '',
                 note: editCall.note || '',
                 recordingLink: editCall.recordingLink || '',
+                meetingLink: editCall.meetingLink || '',
                 recruiterNameOrGmail: editCall.recruiterNameOrGmail || '',
+                companyName: editCall.companyName || '',
+                jobDescription: editCall.jobDescription || '',
+                resume: editCall.resume || '',
             });
         } else {
             setForm({ ...emptyForm, caller: isAdmin ? '' : (currentUser?._id || '') });
@@ -208,7 +213,7 @@ function CallFormDialog({ open, onClose, editCall, profiles, onSaved, isAdmin, u
     };
 
     return (
-        <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth
+        <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth
             slotProps={{ paper: { sx: { borderRadius: 3 } } }}>
             <DialogTitle sx={{ fontWeight: 700, color: '#1a237e' }}>
                 {editCall?._id ? 'Edit Call' : 'Add Call'}
@@ -261,8 +266,16 @@ function CallFormDialog({ open, onClose, editCall, profiles, onSaved, isAdmin, u
                     </Box>
                     <TextField label="Recruiter Name / Gmail" name="recruiterNameOrGmail"
                         value={form.recruiterNameOrGmail} onChange={handleChange} size="small" fullWidth sx={inputSx} />
-                    <TextField label="Note (e.g. company name)" name="note"
+                    <TextField label="Company Name" name="companyName"
+                        value={form.companyName} onChange={handleChange} size="small" fullWidth sx={inputSx} />
+                    <TextField label="Meeting Link" name="meetingLink"
+                        value={form.meetingLink} onChange={handleChange} size="small" fullWidth sx={inputSx} />
+                    <TextField label="Note" name="note"
                         value={form.note} onChange={handleChange} size="small" fullWidth multiline minRows={2} sx={inputSx} />
+                    <TextField label="Job Description" name="jobDescription"
+                        value={form.jobDescription} onChange={handleChange} size="small" fullWidth multiline minRows={4} sx={inputSx} />
+                    <TextField label="Resume" name="resume"
+                        value={form.resume} onChange={handleChange} size="small" fullWidth multiline minRows={4} sx={inputSx} />
                     <TextField label="Recording Link" name="recordingLink"
                         value={form.recordingLink} onChange={handleChange} size="small" fullWidth sx={inputSx} />
                     {error && <Typography sx={{ color: '#c62828', fontSize: '0.85rem', fontWeight: 500 }}>{error}</Typography>}
@@ -729,10 +742,22 @@ function WeekView({ calls, onDayDetail, onAdd, onEdit }) {
                             {callPopover.call.note}
                         </Typography>
                     )}
+                    {callPopover.call.companyName && (
+                        <Typography sx={{ fontSize: '0.75rem', color: '#5f6368', mb: 0.5 }}>
+                            Company: {callPopover.call.companyName}
+                        </Typography>
+                    )}
                     {callPopover.call.recruiterNameOrGmail && (
                         <Typography sx={{ fontSize: '0.75rem', color: '#5f6368', mb: 0.5 }}>
                             Recruiter: {callPopover.call.recruiterNameOrGmail}
                         </Typography>
+                    )}
+                    {callPopover.call.meetingLink && (
+                        <Button size="small" startIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />}
+                            component="a" href={callPopover.call.meetingLink} target="_blank" rel="noopener noreferrer"
+                            sx={{ textTransform: 'none', fontSize: '0.75rem', color: '#1565c0', px: 0, minWidth: 0 }}>
+                            Meeting link
+                        </Button>
                     )}
                     <Box sx={{ pt: 1, mt: 0.5, borderTop: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Button size="small" onClick={() => { setCallPopover(null); onDayDetail(callPopover.call.date?.slice(0, 10) || cstDateStr()); }}
@@ -977,6 +1002,7 @@ function TableView({ calls, onEdit, onDelete }) {
             case 'status':   return call.status || '';
             case 'duration': return call.duration ?? -1;
             case 'recruiter': return (call.recruiterNameOrGmail || '').toLowerCase();
+            case 'company':   return (call.companyName || '').toLowerCase();
             case 'note':      return (call.note || '').toLowerCase();
             default:         return '';
         }
@@ -1021,15 +1047,17 @@ function TableView({ calls, onEdit, onDelete }) {
                             <SortHead field="type"      label="Type" />
                             <SortHead field="status"    label="Status" />
                             <SortHead field="duration"  label="Duration" />
+                            <SortHead field="company"   label="Company" />
                             <SortHead field="recruiter" label="Recruiter" />
                             <SortHead field="note"      label="Note" />
+                            <TableCell sx={{ ...headSx, textAlign: 'center' }}>Meet</TableCell>
                             <TableCell sx={{ ...headSx, textAlign: 'center' }}>Rec.</TableCell>
                             <TableCell sx={{ ...headSx, textAlign: 'center' }}>Actions</TableCell>
                         </TableRow>
                     </TableHead>
                     <TableBody>
                         {sorted.length === 0 ? (
-                            <TableRow><TableCell colSpan={12} sx={{ textAlign: 'center', py: 6, color: '#90a4ae' }}>No calls recorded yet</TableCell></TableRow>
+                            <TableRow><TableCell colSpan={14} sx={{ textAlign: 'center', py: 6, color: '#90a4ae' }}>No calls recorded yet</TableCell></TableRow>
                         ) : sorted.map(call => (
                             <TableRow key={call._id} hover sx={{ '&:hover': { background: '#f8f9fa' } }}>
                                 <TableCell sx={cellSx}>{call.date ? cstLocaleDate(call.date.slice(0, 10)) : '—'}</TableCell>
@@ -1051,8 +1079,12 @@ function TableView({ calls, onEdit, onDelete }) {
                                     {call.status ? <Chip label={call.status} size="small" sx={{ fontWeight: 600, fontSize: '0.72rem', background: `${STATUS_COLORS[call.status]}18`, color: STATUS_COLORS[call.status] }} /> : '—'}
                                 </TableCell>
                                 <TableCell sx={cellSx}>{call.duration != null ? `${call.duration} min` : '—'}</TableCell>
+                                <TableCell sx={{ ...cellSx, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{call.companyName || '—'}</TableCell>
                                 <TableCell sx={{ ...cellSx, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{call.recruiterNameOrGmail || '—'}</TableCell>
                                 <TableCell sx={{ ...cellSx, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{call.note || '—'}</TableCell>
+                                <TableCell sx={{ ...cellSx, textAlign: 'center' }}>
+                                    {call.meetingLink ? <Tooltip title="Open meeting"><IconButton size="small" component="a" href={call.meetingLink} target="_blank" rel="noopener noreferrer" sx={{ color: '#1565c0' }}><OpenInNewIcon sx={{ fontSize: 16 }} /></IconButton></Tooltip> : '—'}
+                                </TableCell>
                                 <TableCell sx={{ ...cellSx, textAlign: 'center' }}>
                                     {call.recordingLink ? <Tooltip title="Open recording"><IconButton size="small" component="a" href={call.recordingLink} target="_blank" rel="noopener noreferrer" sx={{ color: '#1565c0' }}><OpenInNewIcon sx={{ fontSize: 16 }} /></IconButton></Tooltip> : '—'}
                                 </TableCell>
