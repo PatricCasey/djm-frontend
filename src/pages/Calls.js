@@ -395,7 +395,7 @@ function MiniCalendar({ weekStart, onWeekChange, callsByDate }) {
 }
 
 // ─── Week View ────────────────────────────────────────────────────────────────
-function WeekView({ calls, onDayDetail, onAdd, onEdit }) {
+function WeekView({ calls, onDayDetail, onAdd, onEdit, onDelete }) {
     const HOUR_HEIGHT = 56;
     const HOURS = Array.from({ length: 24 }, (_, i) => i);
     const TIME_COL_W = 52;
@@ -764,11 +764,18 @@ function WeekView({ calls, onDayDetail, onAdd, onEdit }) {
                             sx={{ textTransform: 'none', fontSize: '0.75rem', color: '#5f6368', borderRadius: 1.5, '&:hover': { background: '#f1f3f4' } }}>
                             View day
                         </Button>
-                        <Button size="small" startIcon={<EditIcon sx={{ fontSize: 14 }} />}
-                            onClick={() => { setCallPopover(null); onEdit(callPopover.call); }}
-                            sx={{ textTransform: 'none', fontWeight: 600, color: '#1a73e8', borderRadius: 1.5, '&:hover': { background: '#e8f0fe' } }}>
-                            Edit
-                        </Button>
+                        <Box sx={{ display: 'flex', gap: 0.5 }}>
+                            <Button size="small" startIcon={<DeleteIcon sx={{ fontSize: 14 }} />}
+                                onClick={() => { const id = callPopover.call._id; setCallPopover(null); onDelete(id); }}
+                                sx={{ textTransform: 'none', fontWeight: 600, color: '#ef5350', borderRadius: 1.5, '&:hover': { background: '#ffebee' } }}>
+                                Delete
+                            </Button>
+                            <Button size="small" startIcon={<EditIcon sx={{ fontSize: 14 }} />}
+                                onClick={() => { setCallPopover(null); onEdit(callPopover.call); }}
+                                sx={{ textTransform: 'none', fontWeight: 600, color: '#1a73e8', borderRadius: 1.5, '&:hover': { background: '#e8f0fe' } }}>
+                                Edit
+                            </Button>
+                        </Box>
                     </Box>
                 </Popover>
             )}
@@ -1191,7 +1198,7 @@ const Calls = ({ user }) => {
                                 <Tab icon={<TableChartIcon fontSize="small" />} iconPosition="start" label="Table"
                                     sx={{ textTransform: 'none', fontWeight: 500, minHeight: 40, color: '#5f6368', fontSize: '0.9rem', '&.Mui-selected': { color: '#1a73e8', fontWeight: 600 } }} />
                             </Tabs>
-                            {viewTab === 0 && <WeekView calls={calls} onDayDetail={setSelectedDay} onAdd={openCreate} onEdit={openEdit} />}
+                            {viewTab === 0 && <WeekView calls={calls} onDayDetail={setSelectedDay} onAdd={openCreate} onEdit={openEdit} onDelete={setDeleteId} />}
                             {viewTab === 1 && <TableView calls={calls} onEdit={openEdit} onDelete={setDeleteId} />}
                         </>
                     )}
