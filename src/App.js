@@ -1,4 +1,5 @@
 import React from 'react';
+import axios from 'axios';
 import Register from './pages/Register';
 import Login from './pages/Login';
 import Dashboard from './components/Dashboard';
@@ -67,14 +68,27 @@ function App() {
         }
     }, [role, navItems, mainPage]);
 
-    const handleLogout = () => {
+    const handleLogout = React.useCallback(() => {
         setUser(null);
         setStep('login');
         localStorage.removeItem('user');
         localStorage.removeItem('step');
         localStorage.removeItem('mainPage');
         localStorage.removeItem('token');
-    };
+    }, []);
+
+    React.useEffect(() => {
+        const interceptor = axios.interceptors.response.use(
+            response => response,
+            error => {
+                if (error.response?.status === 401) {
+                    handleLogout();
+                }
+                return Promise.reject(error);
+            }
+        );
+        return () => axios.interceptors.response.eject(interceptor);
+    }, [handleLogout]);
 
     return (
         <ThemeProvider theme={theme}>
