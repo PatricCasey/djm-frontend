@@ -28,6 +28,12 @@ export async function assignProfiles(callerId, profileIds) {
     return res.data;
 }
 
+// Sets a caller's calendar colour. Pass '' to clear it back to the auto palette.
+export async function setCallerColor(userId, callColor) {
+    const res = await axios.put(`${API}/api/admin/users/${userId}/call-color`, { callColor }, { headers: authHeader() });
+    return res.data;
+}
+
 export async function toggleApproval(userId) {
     const res = await axios.put(`${API}/api/admin/users/${userId}/toggle-approval`, {}, { headers: authHeader() });
     return res.data;

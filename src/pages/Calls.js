@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { listCalls, listAllCalls, listMyProfiles, createCall, updateCall, deleteCall } from '../api/calls.api';
-import { listProfiles, listUsers } from '../api/admin.api';
+import { listCalls, listAllCalls, listMyProfiles, createCall, updateCall, deleteCall, claimCall, releaseCall } from '../api/calls.api';
+import { listProfiles, listUsers, setCallerColor } from '../api/admin.api';
+import CallerColorPicker, { CALLER_PALETTE, UNASSIGNED_COLOR, buildCallerColors } from '../components/CallerColors';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Paper from '@mui/material/Paper';
@@ -41,6 +42,9 @@ import CloseIcon from '@mui/icons-material/Close';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
+import PersonIcon from '@mui/icons-material/Person';
+import PanToolAltIcon from '@mui/icons-material/PanToolAlt';
+import UndoIcon from '@mui/icons-material/Undo';
 import { keyframes } from '@emotion/react';
 
 const STEPS = ['pre-screening', 'screening', 'technical', 'final'];
@@ -70,23 +74,32 @@ const STATUS_COLORS = {
     'rescheduled': '#f57c00',
 };
 
-function getCallColor(call) {
-    if (call.status === 'rescheduled')   return { bg: '#e65100', text: '#fff' };
-    if (call.step === 'final')           return { bg: '#ad1457', text: '#fff' };
-    if (call.step === 'technical')       return { bg: '#f57f17', text: '#3c4043' };
-    if (call.type === 'video')           return { bg: '#1565c0', text: '#fff' };
-    if (call.type === 'phone')           return { bg: '#6a1b9a', text: '#fff' };
-    if (call.step === 'screening')       return { bg: '#2e7d32', text: '#fff' };
-    if (call.step === 'pre-screening')   return { bg: '#0277bd', text: '#fff' };
-    return { bg: '#1a73e8', text: '#fff' };
+const callerIdOf = (call) => (call?.caller?._id || call?.caller || null);
+
+const callerLabelOf = (call) => (call?.caller?.email || (call?.caller ? 'Assigned' : 'Unassigned'));
+
+function getCallColor(call, callerColors = {}) {
+    const id = callerIdOf(call);
+    if (!id) return UNASSIGNED_COLOR;
+    return callerColors[id] || CALLER_PALETTE[0];
 }
+
+const isUnassigned = (call) => !callerIdOf(call);
 
 const isImportantCall = (call) => call.step === 'technical' || call.step === 'final';
 
-const importantPulse = keyframes`
-    0%   { box-shadow: 0 0 4px 2px rgba(255,200,0,0.45), 0 1px 4px rgba(0,0,0,0.18); }
-    50%  { box-shadow: 0 0 20px 9px rgba(255,200,0,0.9), 0 2px 10px rgba(0,0,0,0.22); }
-    100% { box-shadow: 0 0 4px 2px rgba(255,200,0,0.45), 0 1px 4px rgba(0,0,0,0.18); }
+// Technical and final calls animate so they stand out from routine ones. They
+// pulse in different hues so the two stages stay distinguishable.
+const technicalPulse = keyframes`
+    0%   { box-shadow: 0 0 4px 2px rgba(255,193,7,0.45), 0 1px 4px rgba(0,0,0,0.18); }
+    50%  { box-shadow: 0 0 20px 9px rgba(255,193,7,0.95), 0 2px 10px rgba(0,0,0,0.22); }
+    100% { box-shadow: 0 0 4px 2px rgba(255,193,7,0.45), 0 1px 4px rgba(0,0,0,0.18); }
+`;
+
+const finalPulse = keyframes`
+    0%   { box-shadow: 0 0 5px 2px rgba(255,82,82,0.5), 0 1px 4px rgba(0,0,0,0.18); }
+    50%  { box-shadow: 0 0 22px 10px rgba(255,82,82,1), 0 2px 10px rgba(0,0,0,0.22); }
+    100% { box-shadow: 0 0 5px 2px rgba(255,82,82,0.5), 0 1px 4px rgba(0,0,0,0.18); }
 `;
 
 const shimmerSlide = keyframes`
@@ -94,6 +107,38 @@ const shimmerSlide = keyframes`
     55%  { left: 130%; }
     100% { left: 130%; }
 `;
+
+const starTwinkle = keyframes`
+    0%, 100% { opacity: 1;    transform: scale(1); }
+    50%      { opacity: 0.45; transform: scale(1.35); }
+`;
+
+// The sx fragment that makes a technical/final call block animate. Blocks that
+// use it must be `position: relative` (or absolute) for the shimmer overlay.
+function importantSx(call) {
+    if (!isImportantCall(call)) return {};
+    const isFinal = call.step === 'final';
+    return {
+        animation: `${isFinal ? finalPulse : technicalPulse} ${isFinal ? '1.6s' : '2s'} ease-in-out infinite`,
+        '&:after': {
+            content: '""', position: 'absolute', top: 0, left: '-80%',
+            width: '50%', height: '100%',
+            background: 'linear-gradient(to right, transparent, rgba(255,255,255,0.32), transparent)',
+            animation: `${shimmerSlide} 3s ease-in-out infinite`,
+            pointerEvents: 'none',
+        },
+    };
+}
+
+// Animated marker prefixed to technical/final call titles.
+function ImportantStar({ call, size = 11 }) {
+    if (!isImportantCall(call)) return null;
+    return (
+        <Box component="span" sx={{ flexShrink: 0, fontSize: size, lineHeight: 1, display: 'inline-block', animation: `${starTwinkle} 1.4s ease-in-out infinite` }}>
+            {call.step === 'final' ? '★' : '✦'}
+        </Box>
+    );
+}
 
 const CST = 'America/Chicago';
 
@@ -165,6 +210,9 @@ function CallFormDialog({ open, onClose, editCall, profiles, onSaved, isAdmin, u
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
 
+    // A caller opening an existing call from the unassigned pool: saving claims it.
+    const editingUnassigned = !isAdmin && !!editCall?._id && isUnassigned(editCall);
+
     useEffect(() => {
         if (!open) return;
         if (editCall) {
@@ -200,7 +248,9 @@ function CallFormDialog({ open, onClose, editCall, profiles, onSaved, isAdmin, u
                 ...form,
                 duration: form.duration !== '' ? Number(form.duration) : undefined,
                 profile: form.profile || undefined,
-                caller: isAdmin ? (form.caller || undefined) : undefined,
+                // `null` is meaningful for an admin: it drops the call into the
+                // unassigned pool for a caller to claim.
+                caller: isAdmin ? (form.caller || null) : undefined,
             };
             if (editCall?._id) await updateCall(editCall._id, payload);
             else await createCall(payload);
@@ -222,13 +272,17 @@ function CallFormDialog({ open, onClose, editCall, profiles, onSaved, isAdmin, u
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 1 }}>
                     {isAdmin ? (
                         <TextField select label="Caller" name="caller"
-                            value={form.caller} onChange={handleChange} size="small" fullWidth sx={inputSx}>
-                            <MenuItem value="">— None —</MenuItem>
+                            value={form.caller} onChange={handleChange} size="small" fullWidth sx={inputSx}
+                            helperText={form.caller ? ' ' : 'Leave unassigned — any caller can claim this meeting themselves.'}>
+                            <MenuItem value="">— Unassigned (caller claims it) —</MenuItem>
                             {users.filter(u => u.role === 'caller' || u.role === 'admin').map(u => <MenuItem key={u._id} value={u._id}>{u.email}</MenuItem>)}
                         </TextField>
                     ) : (
-                        <TextField label="Caller" value={currentUser?.email || ''} size="small" fullWidth
+                        <TextField label="Caller"
+                            value={editingUnassigned ? '— Unassigned —' : (currentUser?.email || '')}
+                            size="small" fullWidth
                             slotProps={{ input: { readOnly: true } }}
+                            helperText={editingUnassigned ? 'Saving assigns this meeting to you.' : undefined}
                             sx={{ '& .MuiOutlinedInput-root': { background: '#f1f3f4', borderRadius: 2, '&:hover fieldset': { borderColor: '#90caf9' } } }} />
                     )}
                     <TextField select label="Profile" name="profile"
@@ -395,7 +449,7 @@ function MiniCalendar({ weekStart, onWeekChange, callsByDate }) {
 }
 
 // ─── Week View ────────────────────────────────────────────────────────────────
-function WeekView({ calls, onDayDetail, onAdd, onEdit, onDelete }) {
+function WeekView({ calls, onDayDetail, onAdd, onEdit, onDelete, callerColors, callerList, onClaim, onRelease, onSetCallerColor, currentUserId, isAdmin }) {
     const HOUR_HEIGHT = 56;
     const HOURS = Array.from({ length: 24 }, (_, i) => i);
     const TIME_COL_W = 52;
@@ -432,9 +486,10 @@ function WeekView({ calls, onDayDetail, onAdd, onEdit, onDelete }) {
         });
     }, [weekStart]); // eslint-disable-line
 
-    // ── Dark mode & profile filter ──
+    // ── Dark mode & filters ──
     const [darkMode, setDarkMode] = useState(false);
     const [filterProfile, setFilterProfile] = useState('');
+    const [filterCaller, setFilterCaller] = useState('');
 
     const wt = darkMode ? {
         bg: '#1e1e2e', header: '#26263a', border: '#3c3f5c', sidebar: '#22222f',
@@ -461,9 +516,12 @@ function WeekView({ calls, onDayDetail, onAdd, onEdit, onDelete }) {
         return list.sort((a, b) => a.name.localeCompare(b.name));
     }, [calls]);
 
-    const visibleCalls = useMemo(() =>
-        filterProfile ? calls.filter(c => (c.profile?._id || c.profile) === filterProfile) : calls,
-    [calls, filterProfile]);
+    const visibleCalls = useMemo(() => calls.filter(c => {
+        if (filterProfile && (c.profile?._id || c.profile) !== filterProfile) return false;
+        if (filterCaller === 'unassigned') return isUnassigned(c);
+        if (filterCaller && callerIdOf(c) !== filterCaller) return false;
+        return true;
+    }), [calls, filterProfile, filterCaller]);
 
     const callsByDate = useMemo(() => {
         const map = {};
@@ -496,6 +554,7 @@ function WeekView({ calls, onDayDetail, onAdd, onEdit, onDelete }) {
     // ── Drag-to-create ──
     const [dragState, setDragState] = useState(null); // { dateKey, colEl, startMin, endMin }
     const [callPopover, setCallPopover] = useState(null); // { call, anchorEl }
+    const [colorPicker, setColorPicker] = useState(null); // { caller, anchorEl } — admin only
     const dragRef = useRef(null);
     const onAddRef = useRef(onAdd);
     useEffect(() => { onAddRef.current = onAdd; });
@@ -564,6 +623,17 @@ function WeekView({ calls, onDayDetail, onAdd, onEdit, onDelete }) {
                     {dateRangeLabel}
                 </Typography>
                 <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <TextField select size="small" value={filterCaller} onChange={e => setFilterCaller(e.target.value)}
+                        sx={{ minWidth: 150, '& .MuiOutlinedInput-root': { borderRadius: 20, background: wt.bg, color: wt.text, '& fieldset': { borderColor: wt.border }, '&:hover fieldset': { borderColor: wt.subtext } }, '& .MuiSelect-icon': { color: wt.subtext }, '& .MuiInputBase-input': { py: '6px', fontSize: '0.85rem', color: wt.text } }}>
+                        <MenuItem value="">All Callers</MenuItem>
+                        <MenuItem value="unassigned">Unassigned only</MenuItem>
+                        {callerList.map(c => (
+                            <MenuItem key={c.id} value={c.id}>
+                                <Box component="span" sx={{ display: 'inline-block', width: 9, height: 9, borderRadius: '2px', mr: 1, background: callerColors[c.id]?.bg }} />
+                                {c.email}
+                            </MenuItem>
+                        ))}
+                    </TextField>
                     <TextField select size="small" value={filterProfile} onChange={e => setFilterProfile(e.target.value)}
                         sx={{ minWidth: 150, '& .MuiOutlinedInput-root': { borderRadius: 20, background: wt.bg, color: wt.text, '& fieldset': { borderColor: wt.border }, '&:hover fieldset': { borderColor: wt.subtext } }, '& .MuiSelect-icon': { color: wt.subtext }, '& .MuiInputBase-input': { py: '6px', fontSize: '0.85rem', color: wt.text } }}>
                         <MenuItem value="">All Profiles</MenuItem>
@@ -587,21 +657,48 @@ function WeekView({ calls, onDayDetail, onAdd, onEdit, onDelete }) {
                         onWeekChange={setWeekStart}
                         callsByDate={callsByDate}
                     />
-                    {/* Color legend */}
+                    {/* Caller colour legend — one colour per caller */}
                     <Box sx={{ mt: 2, pt: 1.5, borderTop: `1px solid ${wt.border}` }}>
-                        <Typography sx={{ fontSize: '0.6rem', fontWeight: 700, color: wt.subtext, mb: 0.75, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Legend</Typography>
+                        <Typography sx={{ fontSize: '0.6rem', fontWeight: 700, color: wt.subtext, mb: 0.75, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                            Callers{isAdmin ? ' — click a swatch to recolour' : ''}
+                        </Typography>
+                        {callerList.map(c => (
+                            <Box key={c.id} onClick={() => setFilterCaller(f => f === c.id ? '' : c.id)}
+                                sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.4, cursor: 'pointer', borderRadius: 1, px: 0.5, py: '1px', ml: -0.5, background: filterCaller === c.id ? wt.hover : 'transparent', '&:hover': { background: wt.hover } }}>
+                                <Tooltip title={isAdmin ? 'Change this caller’s colour' : ''} disableHoverListener={!isAdmin}>
+                                    <Box
+                                        onClick={isAdmin ? (e => { e.stopPropagation(); setColorPicker({ caller: c, anchorEl: e.currentTarget }); }) : undefined}
+                                        sx={{
+                                            width: isAdmin ? 12 : 8, height: isAdmin ? 12 : 8, borderRadius: '2px',
+                                            background: callerColors[c.id]?.bg, flexShrink: 0,
+                                            cursor: isAdmin ? 'pointer' : 'inherit',
+                                            border: isAdmin ? `1px solid ${wt.border}` : 'none',
+                                            transition: 'transform 0.12s',
+                                            '&:hover': isAdmin ? { transform: 'scale(1.25)' } : {},
+                                        }} />
+                                </Tooltip>
+                                <Typography noWrap sx={{ fontSize: '0.63rem', color: wt.subtext, fontWeight: c.id === currentUserId ? 700 : 400 }}>
+                                    {c.email}{c.id === currentUserId ? ' (you)' : ''}
+                                </Typography>
+                            </Box>
+                        ))}
+                        <Box onClick={() => setFilterCaller(f => f === 'unassigned' ? '' : 'unassigned')}
+                            sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.4, cursor: 'pointer', borderRadius: 1, px: 0.5, py: '1px', ml: -0.5, background: filterCaller === 'unassigned' ? wt.hover : 'transparent', '&:hover': { background: wt.hover } }}>
+                            <Box sx={{ width: 8, height: 8, borderRadius: '2px', background: UNASSIGNED_COLOR.bg, flexShrink: 0, border: `1px dashed ${wt.subtext}` }} />
+                            <Typography sx={{ fontSize: '0.63rem', color: wt.subtext }}>Unassigned</Typography>
+                        </Box>
+                    </Box>
+
+                    {/* Step animation legend */}
+                    <Box sx={{ mt: 1.5, pt: 1.5, borderTop: `1px solid ${wt.border}` }}>
+                        <Typography sx={{ fontSize: '0.6rem', fontWeight: 700, color: wt.subtext, mb: 0.75, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Animated Steps</Typography>
                         {[
-                            { color: '#e65100', label: 'Rescheduled' },
-                            { color: '#ad1457', label: 'Final ✦ (anim)' },
-                            { color: '#f57f17', label: 'Technical ✦ (anim)' },
-                            { color: '#1565c0', label: 'Video call' },
-                            { color: '#6a1b9a', label: 'Phone call' },
-                            { color: '#2e7d32', label: 'Screening' },
-                            { color: '#0277bd', label: 'Pre-screening' },
-                        ].map(({ color, label }) => (
-                            <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.4 }}>
-                                <Box sx={{ width: 8, height: 8, borderRadius: '2px', background: color, flexShrink: 0 }} />
-                                <Typography sx={{ fontSize: '0.63rem', color: wt.subtext }}>{label}</Typography>
+                            { mark: '✦', label: 'Technical', glow: 'rgba(255,193,7,0.95)' },
+                            { mark: '★', label: 'Final', glow: 'rgba(255,82,82,1)' },
+                        ].map(({ mark, label, glow }) => (
+                            <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
+                                <Box sx={{ width: 8, height: 8, borderRadius: '2px', background: wt.subtext, flexShrink: 0, boxShadow: `0 0 6px 2px ${glow}` }} />
+                                <Typography sx={{ fontSize: '0.63rem', color: wt.subtext }}>{mark} {label}</Typography>
                             </Box>
                         ))}
                     </Box>
@@ -683,22 +780,29 @@ function WeekView({ calls, onDayDetail, onAdd, onEdit, onDelete }) {
                                     )}
 
                                     {items.map(({ call: c, startMin, endMin, col, totalCols }) => {
-                                        const { bg, text: txtColor } = getCallColor(c);
+                                        const { bg, text: txtColor } = getCallColor(c, callerColors);
                                         const important = isImportantCall(c);
+                                        const free = isUnassigned(c);
                                         const topPx = startMin * (HOUR_HEIGHT / 60);
                                         const heightPx = Math.max((endMin - startMin) * (HOUR_HEIGHT / 60), 18);
                                         return (
                                             <Box key={c._id} data-call="true"
                                                 onClick={e => { e.stopPropagation(); setCallPopover({ call: c, anchorEl: e.currentTarget }); }}
-                                                sx={{ position: 'absolute', top: topPx + 1, left: `calc(${(col / totalCols) * 100}% + 2px)`, width: `calc(${100 / totalCols}% - 4px)`, minHeight: heightPx, background: bg, color: txtColor, borderRadius: 1, px: 0.5, py: '2px', cursor: 'pointer', overflow: 'hidden', zIndex: 2, boxShadow: important ? 'none' : '0 1px 3px rgba(0,0,0,0.15)', animation: important ? `${importantPulse} 2s ease-in-out infinite` : undefined, '&:after': important ? { content: '""', position: 'absolute', top: 0, left: '-80%', width: '50%', height: '100%', background: 'linear-gradient(to right, transparent, rgba(255,255,255,0.3), transparent)', animation: `${shimmerSlide} 3s ease-in-out infinite`, pointerEvents: 'none' } : {}, '&:hover': { filter: 'brightness(0.88)', zIndex: 4 } }}>
+                                                sx={{ position: 'absolute', top: topPx + 1, left: `calc(${(col / totalCols) * 100}% + 2px)`, width: `calc(${100 / totalCols}% - 4px)`, minHeight: heightPx, background: free ? `repeating-linear-gradient(45deg, ${bg}, ${bg} 6px, rgba(255,255,255,0.18) 6px, rgba(255,255,255,0.18) 12px)` : bg, color: txtColor, border: free ? '1px dashed rgba(255,255,255,0.85)' : 'none', borderRadius: 1, px: 0.5, py: '2px', cursor: 'pointer', overflow: 'hidden', zIndex: 2, boxShadow: important ? 'none' : '0 1px 3px rgba(0,0,0,0.15)', ...importantSx(c), '&:hover': { filter: 'brightness(0.88)', zIndex: 4 } }}>
                                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: '2px', overflow: 'hidden' }}>
                                                     {c.type === 'video' ? <VideoCallIcon sx={{ fontSize: 9, flexShrink: 0 }} /> : c.type === 'phone' ? <PhoneIcon sx={{ fontSize: 9, flexShrink: 0 }} /> : null}
+                                                    <ImportantStar call={c} size={9} />
                                                     <Typography sx={{ fontSize: '0.67rem', fontWeight: 700, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                                                        {important ? '★ ' : ''}{c.profile?.name || c.recruiterNameOrGmail || 'Call'}
+                                                        {c.profile?.name || c.recruiterNameOrGmail || 'Call'}
                                                     </Typography>
                                                     {c.status === 'completed' && <CheckCircleIcon sx={{ fontSize: 9, flexShrink: 0, opacity: 0.9 }} />}
                                                 </Box>
                                                 {heightPx > 30 && <Typography sx={{ fontSize: '0.59rem', opacity: 0.9, lineHeight: 1.2 }}>{c.time}{c.step ? ` · ${c.step}` : ''}</Typography>}
+                                                {heightPx > 44 && (
+                                                    <Typography noWrap sx={{ fontSize: '0.57rem', opacity: 0.88, lineHeight: 1.2, fontStyle: free ? 'italic' : 'normal' }}>
+                                                        {free ? 'Unassigned' : callerLabelOf(c)}
+                                                    </Typography>
+                                                )}
                                             </Box>
                                         );
                                     })}
@@ -708,6 +812,17 @@ function WeekView({ calls, onDayDetail, onAdd, onEdit, onDelete }) {
                     </Box>
                 </Box>
             </Box>
+
+            {/* ── Caller colour picker (admin) ── */}
+            {isAdmin && colorPicker && (
+                <CallerColorPicker
+                    anchorEl={colorPicker.anchorEl}
+                    caller={colorPicker.caller}
+                    currentColor={callerColors[colorPicker.caller.id]?.custom ? callerColors[colorPicker.caller.id].bg : ''}
+                    onSave={onSetCallerColor}
+                    onClose={() => setColorPicker(null)}
+                />
+            )}
 
             {/* ── Call detail popover ── */}
             {callPopover && (
@@ -720,13 +835,31 @@ function WeekView({ calls, onDayDetail, onAdd, onEdit, onDelete }) {
                     slotProps={{ paper: { sx: { borderRadius: 2, boxShadow: '0 4px 24px rgba(0,0,0,0.22)', p: 1.5, minWidth: 230, maxWidth: 290 } } }}
                 >
                     <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 0.5 }}>
+                        <Box sx={{ width: 4, alignSelf: 'stretch', borderRadius: 2, mr: 1, background: getCallColor(callPopover.call, callerColors).bg, flexShrink: 0 }} />
                         <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: '#3c4043', flex: 1, mr: 1 }}>
+                            {isImportantCall(callPopover.call) && (
+                                <Box component="span" sx={{ mr: 0.5, color: callPopover.call.step === 'final' ? '#d32f2f' : '#f9a825', animation: `${starTwinkle} 1.4s ease-in-out infinite`, display: 'inline-block' }}>
+                                    {callPopover.call.step === 'final' ? '★' : '✦'}
+                                </Box>
+                            )}
                             {callPopover.call.profile?.name || callPopover.call.recruiterNameOrGmail || 'Call'}
                         </Typography>
                         <IconButton size="small" onClick={() => setCallPopover(null)} sx={{ p: 0.25, color: '#70757a', mt: '-3px' }}>
                             <CloseIcon sx={{ fontSize: 16 }} />
                         </IconButton>
                     </Box>
+
+                    {/* Who is running this call */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75 }}>
+                        <PersonIcon sx={{ fontSize: 16, color: getCallColor(callPopover.call, callerColors).bg }} />
+                        <Typography sx={{ fontSize: '0.78rem', fontWeight: 600, color: isUnassigned(callPopover.call) ? '#9aa0a6' : '#3c4043', fontStyle: isUnassigned(callPopover.call) ? 'italic' : 'normal', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {isUnassigned(callPopover.call) ? 'Unassigned — free to claim' : callerLabelOf(callPopover.call)}
+                        </Typography>
+                        {callerIdOf(callPopover.call) === currentUserId && (
+                            <Chip label="You" size="small" sx={{ height: 18, fontSize: '0.62rem', fontWeight: 700, background: '#e8f0fe', color: '#1a73e8' }} />
+                        )}
+                    </Box>
+
                     {callPopover.call.time && (
                         <Typography sx={{ fontSize: '0.78rem', color: '#5f6368', mb: 0.75 }}>
                             {callPopover.call.time}{callPopover.call.duration ? ` · ${callPopover.call.duration} min` : ''}
@@ -759,6 +892,21 @@ function WeekView({ calls, onDayDetail, onAdd, onEdit, onDelete }) {
                             Meeting link
                         </Button>
                     )}
+                    {/* Self-service assignment */}
+                    {isUnassigned(callPopover.call) ? (
+                        <Button size="small" fullWidth variant="contained" startIcon={<PanToolAltIcon sx={{ fontSize: 15 }} />}
+                            onClick={() => { const id = callPopover.call._id; setCallPopover(null); onClaim(id); }}
+                            sx={{ mt: 0.5, textTransform: 'none', fontWeight: 700, fontSize: '0.75rem', borderRadius: 1.5, background: 'linear-gradient(135deg, #0d47a1, #1976d2)' }}>
+                            Assign this meeting to me
+                        </Button>
+                    ) : (isAdmin || callerIdOf(callPopover.call) === currentUserId) && (
+                        <Button size="small" startIcon={<UndoIcon sx={{ fontSize: 14 }} />}
+                            onClick={() => { const id = callPopover.call._id; setCallPopover(null); onRelease(id); }}
+                            sx={{ mt: 0.5, textTransform: 'none', fontWeight: 600, fontSize: '0.73rem', color: '#5f6368', px: 0, minWidth: 0, '&:hover': { background: 'transparent', textDecoration: 'underline' } }}>
+                            Release to unassigned pool
+                        </Button>
+                    )}
+
                     <Box sx={{ pt: 1, mt: 0.5, borderTop: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Button size="small" onClick={() => { setCallPopover(null); onDayDetail(callPopover.call.date?.slice(0, 10) || cstDateStr()); }}
                             sx={{ textTransform: 'none', fontSize: '0.75rem', color: '#5f6368', borderRadius: 1.5, '&:hover': { background: '#f1f3f4' } }}>
@@ -784,7 +932,7 @@ function WeekView({ calls, onDayDetail, onAdd, onEdit, onDelete }) {
 }
 
 // ─── Day Detail View ──────────────────────────────────────────────────────────
-function DayDetailView({ date, calls, onBack, onEdit, onAdd }) {
+function DayDetailView({ date, calls, onBack, onEdit, onAdd, callerColors, onClaim }) {
     const HOUR_HEIGHT = 64;
     const HOURS = Array.from({ length: 24 }, (_, i) => i);
     const [now, setNow] = useState(new Date());
@@ -871,16 +1019,27 @@ function DayDetailView({ date, calls, onBack, onEdit, onAdd }) {
                     </Typography>
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
                         {untimedCalls.map(c => {
-                            const { bg, text: txtColor } = getCallColor(c);
+                            const { bg, text: txtColor } = getCallColor(c, callerColors);
                             const important = isImportantCall(c);
+                            const free = isUnassigned(c);
                             return (
                                 <Box key={c._id} data-call="true" onClick={() => onEdit(c)}
-                                    sx={{ px: 1.5, py: 0.75, borderRadius: 1.5, background: bg, color: txtColor, fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 0.8, position: 'relative', overflow: 'hidden', boxShadow: important ? 'none' : '0 1px 3px rgba(0,0,0,0.15)', animation: important ? `${importantPulse} 2s ease-in-out infinite` : undefined, '&:after': important ? { content: '""', position: 'absolute', top: 0, left: '-80%', width: '50%', height: '100%', background: 'linear-gradient(to right, transparent, rgba(255,255,255,0.3), transparent)', animation: `${shimmerSlide} 3s ease-in-out infinite`, pointerEvents: 'none' } : {}, '&:hover': { filter: 'brightness(0.88)' } }}>
+                                    sx={{ px: 1.5, py: 0.75, borderRadius: 1.5, background: free ? `repeating-linear-gradient(45deg, ${bg}, ${bg} 7px, rgba(255,255,255,0.18) 7px, rgba(255,255,255,0.18) 14px)` : bg, color: txtColor, border: free ? '1px dashed rgba(255,255,255,0.85)' : 'none', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 0.8, position: 'relative', overflow: 'hidden', boxShadow: important ? 'none' : '0 1px 3px rgba(0,0,0,0.15)', ...importantSx(c), '&:hover': { filter: 'brightness(0.88)' } }}>
                                     {c.type === 'video' ? <VideoCallIcon sx={{ fontSize: 14 }} /> : c.type === 'phone' ? <PhoneIcon sx={{ fontSize: 14 }} /> : null}
-                                    <span>{important ? '★ ' : ''}{c.profile?.name || c.recruiterNameOrGmail || 'Call'}</span>
+                                    <ImportantStar call={c} size={13} />
+                                    <span>{c.profile?.name || c.recruiterNameOrGmail || 'Call'}</span>
                                     {c.step && <span style={{ opacity: 0.8, fontSize: '0.7rem' }}>· {c.step}</span>}
+                                    <Box component="span" sx={{ opacity: 0.85, fontSize: '0.68rem', fontWeight: 500, fontStyle: free ? 'italic' : 'normal' }}>
+                                        · {free ? 'Unassigned' : callerLabelOf(c)}
+                                    </Box>
                                     {c.status === 'completed' && <CheckCircleIcon sx={{ fontSize: 14, opacity: 0.9 }} />}
                                     {c.status && c.status !== 'completed' && <Box sx={{ ml: 0.5, px: 0.8, py: '1px', borderRadius: 1, background: 'rgba(255,255,255,0.25)', fontSize: '0.65rem' }}>{c.status}</Box>}
+                                    {free && (
+                                        <Button size="small" onClick={e => { e.stopPropagation(); onClaim(c._id); }}
+                                            sx={{ ml: 0.5, py: 0, minWidth: 0, textTransform: 'none', fontSize: '0.65rem', fontWeight: 700, color: '#fff', background: 'rgba(0,0,0,0.28)', borderRadius: 1, px: 0.8, '&:hover': { background: 'rgba(0,0,0,0.45)' } }}>
+                                            Claim
+                                        </Button>
+                                    )}
                                 </Box>
                             );
                         })}
@@ -914,8 +1073,9 @@ function DayDetailView({ date, calls, onBack, onEdit, onAdd }) {
                                 </Box>
                             )}
                             {layoutItems.map(({ call: c, startMin, endMin, col, totalCols }) => {
-                                const { bg, text: txtColor } = getCallColor(c);
+                                const { bg, text: txtColor } = getCallColor(c, callerColors);
                                 const important = isImportantCall(c);
+                                const free = isUnassigned(c);
                                 const topPx = startMin * (HOUR_HEIGHT / 60);
                                 const heightPx = Math.max((endMin - startMin) * (HOUR_HEIGHT / 60), 24);
                                 return (
@@ -927,23 +1087,39 @@ function DayDetailView({ date, calls, onBack, onEdit, onAdd }) {
                                             left: `calc(${(col / totalCols) * 100}% + 3px)`,
                                             width: `calc(${100 / totalCols}% - 6px)`,
                                             minHeight: heightPx,
-                                            background: bg, color: txtColor,
+                                            background: free ? `repeating-linear-gradient(45deg, ${bg}, ${bg} 7px, rgba(255,255,255,0.18) 7px, rgba(255,255,255,0.18) 14px)` : bg,
+                                            color: txtColor,
+                                            border: free ? '1px dashed rgba(255,255,255,0.85)' : 'none',
                                             borderRadius: 1.5, px: 1, py: 0.5,
                                             cursor: 'pointer', overflow: 'hidden', zIndex: 2,
                                             boxShadow: important ? 'none' : '0 1px 4px rgba(0,0,0,0.18)',
-                                            animation: important ? `${importantPulse} 2s ease-in-out infinite` : undefined,
-                                            '&:after': important ? { content: '""', position: 'absolute', top: 0, left: '-80%', width: '50%', height: '100%', background: 'linear-gradient(to right, transparent, rgba(255,255,255,0.32), transparent)', animation: `${shimmerSlide} 3s ease-in-out infinite`, pointerEvents: 'none' } : {},
+                                            ...importantSx(c),
                                             '&:hover': { filter: 'brightness(0.88)', zIndex: 4 },
                                         }}
                                     >
                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
                                             {c.type === 'video' ? <VideoCallIcon sx={{ fontSize: 13, flexShrink: 0 }} /> : c.type === 'phone' ? <PhoneIcon sx={{ fontSize: 13, flexShrink: 0 }} /> : null}
+                                            <ImportantStar call={c} size={12} />
                                             <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                                                {important ? '★ ' : ''}{c.profile?.name || c.recruiterNameOrGmail || 'Call'}
+                                                {c.profile?.name || c.recruiterNameOrGmail || 'Call'}
                                             </Typography>
                                             {c.status === 'completed' && <CheckCircleIcon sx={{ fontSize: 14, flexShrink: 0, opacity: 0.9 }} />}
                                         </Box>
                                         {heightPx > 38 && <Typography sx={{ fontSize: '0.68rem', opacity: 0.9, lineHeight: 1.3, mt: '1px' }}>{c.time}{c.duration ? ` · ${c.duration}m` : ''}{c.step ? ` · ${c.step}` : ''}</Typography>}
+                                        {heightPx > 48 && (
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4, mt: '2px', opacity: 0.9, overflow: 'hidden' }}>
+                                                <PersonIcon sx={{ fontSize: 11, flexShrink: 0 }} />
+                                                <Typography noWrap sx={{ fontSize: '0.65rem', fontStyle: free ? 'italic' : 'normal' }}>
+                                                    {free ? 'Unassigned' : callerLabelOf(c)}
+                                                </Typography>
+                                                {free && (
+                                                    <Box component="span" onClick={e => { e.stopPropagation(); onClaim(c._id); }}
+                                                        sx={{ ml: 0.3, px: 0.6, borderRadius: 1, background: 'rgba(0,0,0,0.28)', fontSize: '0.62rem', fontWeight: 700, cursor: 'pointer', flexShrink: 0, '&:hover': { background: 'rgba(0,0,0,0.45)' } }}>
+                                                        Claim
+                                                    </Box>
+                                                )}
+                                            </Box>
+                                        )}
                                         {heightPx > 58 && c.type && (
                                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4, mt: 0.4, opacity: 0.85 }}>
                                                 {c.type === 'video' ? <VideoCallIcon sx={{ fontSize: 11 }} /> : <PhoneIcon sx={{ fontSize: 11 }} />}
@@ -982,7 +1158,7 @@ function DayDetailView({ date, calls, onBack, onEdit, onAdd }) {
 }
 
 // ─── Table View ───────────────────────────────────────────────────────────────
-function TableView({ calls, onEdit, onDelete }) {
+function TableView({ calls, onEdit, onDelete, callerColors, onClaim, onRelease, currentUserId, isAdmin }) {
     const [sortField, setSortField] = useState('date');
     const [sortDir, setSortDir] = useState('desc');
 
@@ -1002,6 +1178,7 @@ function TableView({ calls, onEdit, onDelete }) {
         switch (field) {
             case 'date':     return call.date ? new Date(call.date).getTime() : -Infinity;
             case 'time':     return call.time || '';
+            // Unassigned calls sort to the top so the free pool is easy to spot.
             case 'caller':   return (call.caller?.email || '').toLowerCase();
             case 'profile':  return (call.profile?.name || call.profile?.email || '').toLowerCase();
             case 'step':     return call.step || '';
@@ -1069,7 +1246,19 @@ function TableView({ calls, onEdit, onDelete }) {
                             <TableRow key={call._id} hover sx={{ '&:hover': { background: '#f8f9fa' } }}>
                                 <TableCell sx={cellSx}>{call.date ? cstLocaleDate(call.date.slice(0, 10)) : '—'}</TableCell>
                                 <TableCell sx={cellSx}>{call.time || '—'}</TableCell>
-                                <TableCell sx={cellSx}><Typography sx={{ fontSize: '0.78rem', color: '#70757a' }}>{call.caller?.email || '—'}</Typography></TableCell>
+                                <TableCell sx={cellSx}>
+                                    {isUnassigned(call) ? (
+                                        <Chip label="Unassigned" size="small" variant="outlined"
+                                            sx={{ fontWeight: 600, fontSize: '0.7rem', color: '#70757a', borderColor: '#c0c4c9', borderStyle: 'dashed' }} />
+                                    ) : (
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6 }}>
+                                            <Box sx={{ width: 9, height: 9, borderRadius: '2px', flexShrink: 0, background: getCallColor(call, callerColors).bg }} />
+                                            <Typography sx={{ fontSize: '0.78rem', color: '#3c4043', fontWeight: callerIdOf(call) === currentUserId ? 700 : 400 }}>
+                                                {call.caller.email}
+                                            </Typography>
+                                        </Box>
+                                    )}
+                                </TableCell>
                                 <TableCell sx={cellSx}>
                                     {call.profile ? <Chip label={call.profile.name || call.profile.email} size="small" sx={{ fontWeight: 600, background: '#e3f2fd', color: '#1565c0', fontSize: '0.72rem' }} /> : '—'}
                                 </TableCell>
@@ -1096,6 +1285,11 @@ function TableView({ calls, onEdit, onDelete }) {
                                     {call.recordingLink ? <Tooltip title="Open recording"><IconButton size="small" component="a" href={call.recordingLink} target="_blank" rel="noopener noreferrer" sx={{ color: '#1565c0' }}><OpenInNewIcon sx={{ fontSize: 16 }} /></IconButton></Tooltip> : '—'}
                                 </TableCell>
                                 <TableCell sx={{ ...cellSx, textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                    {isUnassigned(call) ? (
+                                        <Tooltip title="Assign this meeting to me"><IconButton size="small" onClick={() => onClaim(call._id)} sx={{ color: '#188038' }}><PanToolAltIcon sx={{ fontSize: 17 }} /></IconButton></Tooltip>
+                                    ) : (isAdmin || callerIdOf(call) === currentUserId) && (
+                                        <Tooltip title="Release to unassigned pool"><IconButton size="small" onClick={() => onRelease(call._id)} sx={{ color: '#9aa0a6' }}><UndoIcon sx={{ fontSize: 16 }} /></IconButton></Tooltip>
+                                    )}
                                     <Tooltip title="Edit"><IconButton size="small" onClick={() => onEdit(call)} sx={{ color: '#1565c0' }}><EditIcon sx={{ fontSize: 16 }} /></IconButton></Tooltip>
                                     <Tooltip title="Delete"><IconButton size="small" onClick={() => onDelete(call._id)} sx={{ color: '#ef5350' }}><DeleteIcon sx={{ fontSize: 16 }} /></IconButton></Tooltip>
                                 </TableCell>
@@ -1120,6 +1314,32 @@ const Calls = ({ user }) => {
     const [editCall, setEditCall] = useState(null);
     const [deleteId, setDeleteId] = useState(null);
     const [selectedDay, setSelectedDay] = useState(null);
+    const [actionError, setActionError] = useState('');
+
+    const currentUserId = user?._id || user?.id || null;
+
+    // Every caller who could own a call, in a stable order (by email) so the
+    // colour each one gets stays the same between renders and reloads.
+    const callerList = useMemo(() => {
+        const byId = new Map();
+        users.filter(u => u.role === 'caller' || u.role === 'admin')
+            .forEach(u => byId.set(u._id, { id: u._id, email: u.email, callColor: u.callColor || null }));
+        // Callers not in `users` (a non-admin never loads that list) come off the calls.
+        calls.forEach(c => {
+            const id = callerIdOf(c);
+            if (id && !byId.has(id)) {
+                byId.set(id, { id, email: c.caller?.email || 'Caller', callColor: c.caller?.callColor || null });
+            }
+        });
+        if (currentUserId && !byId.has(currentUserId)) {
+            byId.set(currentUserId, { id: currentUserId, email: user?.email || 'Me', callColor: null });
+        }
+        return [...byId.values()].sort((a, b) => a.email.localeCompare(b.email));
+    }, [users, calls, currentUserId, user]);
+
+    const callerColors = useMemo(() => buildCallerColors(callerList), [callerList]);
+
+    const unassignedCount = useMemo(() => calls.filter(isUnassigned).length, [calls]);
 
     const fetchCalls = useCallback(async () => {
         setLoading(true);
@@ -1135,7 +1355,19 @@ const Calls = ({ user }) => {
         const loadProfiles = isAdmin ? listProfiles : listMyProfiles;
         loadProfiles().then(setProfiles).catch(() => setProfiles([]));
     }, [isAdmin]);
-    useEffect(() => { if (isAdmin) listUsers().then(setUsers).catch(() => {}); }, [isAdmin]);
+    const fetchUsers = useCallback(async () => {
+        if (!isAdmin) return;
+        try { setUsers(await listUsers()); } catch { /* keep the previous list */ }
+    }, [isAdmin]);
+
+    useEffect(() => { fetchUsers(); }, [fetchUsers]);
+
+    // Admin recolours a caller; the calendar re-reads it from the refreshed user list.
+    const handleSetCallerColor = useCallback(async (callerId, color) => {
+        await setCallerColor(callerId, color);
+        await fetchUsers();
+        fetchCalls();
+    }, [fetchUsers, fetchCalls]);
 
     const openCreate = (prefilledDate = '', prefilledTime = '', prefilledDuration = '') => {
         setEditCall((prefilledDate || prefilledTime)
@@ -1153,6 +1385,27 @@ const Calls = ({ user }) => {
         fetchCalls();
     };
 
+    // A caller assigns an unassigned meeting to themselves.
+    const handleClaim = async (callId) => {
+        setActionError('');
+        try {
+            await claimCall(callId);
+        } catch (err) {
+            setActionError(err.response?.data?.error || 'Could not assign this meeting to you');
+        }
+        fetchCalls();
+    };
+
+    const handleRelease = async (callId) => {
+        setActionError('');
+        try {
+            await releaseCall(callId);
+        } catch (err) {
+            setActionError(err.response?.data?.error || 'Could not release this meeting');
+        }
+        fetchCalls();
+    };
+
     const handleDayBack = (dayOrNull) => setSelectedDay(dayOrNull);
 
     return (
@@ -1166,6 +1419,12 @@ const Calls = ({ user }) => {
                     {isAdmin ? 'All Calls' : 'My Calls'}
                 </Typography>
                 <Chip label={`${calls.length} record${calls.length !== 1 ? 's' : ''}`} size="small" sx={{ fontWeight: 600, background: '#e3f2fd', color: '#1565c0' }} />
+                {unassignedCount > 0 && (
+                    <Tooltip title={isAdmin ? 'Meetings with no caller assigned yet' : 'Unassigned meetings you can claim'}>
+                        <Chip label={`${unassignedCount} unassigned`} size="small" variant="outlined"
+                            sx={{ fontWeight: 600, color: '#70757a', borderColor: '#c0c4c9', borderStyle: 'dashed' }} />
+                    </Tooltip>
+                )}
                 {!selectedDay && (
                     <Button variant="contained" startIcon={<AddIcon />} onClick={() => openCreate()}
                         sx={{ background: 'linear-gradient(135deg, #0d47a1, #1976d2)', borderRadius: 2, textTransform: 'none', fontWeight: 700, boxShadow: '0 2px 8px rgba(13,71,161,0.3)', '&:hover': { background: 'linear-gradient(135deg, #002171, #0d47a1)' } }}>
@@ -1173,6 +1432,12 @@ const Calls = ({ user }) => {
                     </Button>
                 )}
             </Box>
+
+            {actionError && (
+                <Paper elevation={0} sx={{ mb: 2, px: 2, py: 1, borderRadius: 2, border: '1px solid #ffcdd2', background: '#ffebee' }}>
+                    <Typography sx={{ fontSize: '0.85rem', fontWeight: 500, color: '#c62828' }}>{actionError}</Typography>
+                </Paper>
+            )}
 
             {loading ? (
                 <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}>
@@ -1187,6 +1452,8 @@ const Calls = ({ user }) => {
                             onBack={handleDayBack}
                             onEdit={openEdit}
                             onAdd={openCreate}
+                            callerColors={callerColors}
+                            onClaim={handleClaim}
                         />
                     ) : (
                         <>
@@ -1198,8 +1465,12 @@ const Calls = ({ user }) => {
                                 <Tab icon={<TableChartIcon fontSize="small" />} iconPosition="start" label="Table"
                                     sx={{ textTransform: 'none', fontWeight: 500, minHeight: 40, color: '#5f6368', fontSize: '0.9rem', '&.Mui-selected': { color: '#1a73e8', fontWeight: 600 } }} />
                             </Tabs>
-                            {viewTab === 0 && <WeekView calls={calls} onDayDetail={setSelectedDay} onAdd={openCreate} onEdit={openEdit} onDelete={setDeleteId} />}
-                            {viewTab === 1 && <TableView calls={calls} onEdit={openEdit} onDelete={setDeleteId} />}
+                            {viewTab === 0 && <WeekView calls={calls} onDayDetail={setSelectedDay} onAdd={openCreate} onEdit={openEdit} onDelete={setDeleteId}
+                                callerColors={callerColors} callerList={callerList} onClaim={handleClaim} onRelease={handleRelease}
+                                onSetCallerColor={handleSetCallerColor} currentUserId={currentUserId} isAdmin={isAdmin} />}
+                            {viewTab === 1 && <TableView calls={calls} onEdit={openEdit} onDelete={setDeleteId}
+                                callerColors={callerColors} onClaim={handleClaim} onRelease={handleRelease}
+                                currentUserId={currentUserId} isAdmin={isAdmin} />}
                         </>
                     )}
                 </>

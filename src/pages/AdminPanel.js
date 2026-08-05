@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     listUsers, changeRole, assignProfile, assignProfiles,
     toggleApproval, listProfiles, createProfile, updateProfile,
-    deleteProfile, getDuplicateJobUrls,
+    deleteProfile, getDuplicateJobUrls, setCallerColor,
 } from '../api/admin.api';
+import CallerColorPicker, { buildCallerColors, callerListFromUsers } from '../components/CallerColors';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Paper from '@mui/material/Paper';
@@ -51,7 +52,7 @@ const ROLE_COLORS = { admin: '#7b1fa2', caller: '#1565c0', bidder: '#2e7d32' };
 // ─── Profile Form ────────────────────────────────────────────────────────────
 
 const emptyProfile = {
-    name: '', email: '', phone: '', address: '', birthday: '',
+    name: '', email: '', phone: '', address: '', birthday: '', linkedin: '',
     resumeStyle: 1,
     education: { bachelor: { university: '', graduation: '' }, master: { university: '', graduation: '' } },
     companies: [],
@@ -116,6 +117,11 @@ function ProfileDialog({ open, onClose, initial, onSaved }) {
                             size="small" fullWidth InputLabelProps={{ shrink: true }} sx={inputSx} />
                     </Box>
                     <TextField label="Address" value={form.address} onChange={e => set('address', e.target.value)}
+                        size="small" fullWidth sx={inputSx} />
+                    <TextField label="LinkedIn (optional)" value={form.linkedin || ''}
+                        onChange={e => set('linkedin', e.target.value)}
+                        placeholder="linkedin.com/in/username"
+                        helperText="Leave blank to keep it off the resume"
                         size="small" fullWidth sx={inputSx} />
                     <TextField
                         select label="Resume Style" value={form.resumeStyle}
@@ -241,6 +247,16 @@ const AdminPanel = () => {
         } catch { }
     };
 
+    // Calendar colour per caller — same palette and ordering the Calls page uses.
+    const callerColors = useMemo(() => buildCallerColors(callerListFromUsers(users)), [users]);
+    const [colorPicker, setColorPicker] = useState(null); // { caller, anchorEl }
+
+    // Left to reject on failure so the picker can show the error.
+    const handleSetCallerColor = async (userId, color) => {
+        const updated = await setCallerColor(userId, color);
+        setUsers(u => u.map(x => x._id === updated._id ? updated : x));
+    };
+
     const openAssign = (user) => {
         setAssignUser(user);
         if (user.role === 'bidder') {
@@ -350,6 +366,20 @@ const AdminPanel = () => {
                             '&:hover': { borderColor: '#90caf9', boxShadow: '0 4px 16px rgba(0,0,0,0.06)' },
                         }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                                {/* Call-calendar colour — only roles that can own a call have one */}
+                                {(user.role === 'caller' || user.role === 'admin') && (
+                                    <Tooltip title={`Call calendar colour${user.callColor ? ' (custom)' : ' (auto)'} — click to change`}>
+                                        <Box onClick={e => setColorPicker({ caller: { id: user._id, email: user.email }, anchorEl: e.currentTarget })}
+                                            sx={{
+                                                width: 18, height: 18, borderRadius: '4px', flexShrink: 0, cursor: 'pointer',
+                                                background: callerColors[user._id]?.bg || '#9aa0a6',
+                                                border: user.callColor ? '2px solid #3c4043' : '1px solid rgba(0,0,0,0.18)',
+                                                transition: 'transform 0.12s',
+                                                '&:hover': { transform: 'scale(1.15)' },
+                                            }} />
+                                    </Tooltip>
+                                )}
+
                                 <Typography sx={{ fontWeight: 600, color: '#263238', flex: 1, minWidth: 180 }}>
                                     {user.email}
                                 </Typography>
@@ -664,6 +694,17 @@ const AdminPanel = () => {
                     </Button>
                 </DialogActions>
             </Dialog>
+
+            {/* Caller calendar colour picker */}
+            {colorPicker && (
+                <CallerColorPicker
+                    anchorEl={colorPicker.anchorEl}
+                    caller={colorPicker.caller}
+                    currentColor={users.find(u => u._id === colorPicker.caller.id)?.callColor || ''}
+                    onSave={handleSetCallerColor}
+                    onClose={() => setColorPicker(null)}
+                />
+            )}
         </Box>
     );
 };

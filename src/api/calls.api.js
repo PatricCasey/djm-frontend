@@ -32,6 +32,18 @@ export async function updateCall(callId, data) {
     return res.data;
 }
 
+// Self-service assignment: the signed-in caller takes an unassigned call.
+export async function claimCall(callId) {
+    const res = await axios.put(`${API}/api/calls/${callId}/claim`, {}, { headers: authHeader() });
+    return res.data;
+}
+
+// Hand a call back to the unassigned pool.
+export async function releaseCall(callId) {
+    const res = await axios.put(`${API}/api/calls/${callId}/release`, {}, { headers: authHeader() });
+    return res.data;
+}
+
 export async function deleteCall(callId) {
     const res = await axios.delete(`${API}/api/calls/${callId}`, { headers: authHeader() });
     return res.data;
