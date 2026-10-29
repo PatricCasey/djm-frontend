@@ -19,6 +19,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckIcon from '@mui/icons-material/Check';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
+import { copyToClipboard } from '../utils/clipboard';
 
 const Search = ({ user }) => {
     const [keyword, setKeyword] = useState('');
@@ -30,7 +31,7 @@ const Search = ({ user }) => {
     const [copiedId, setCopiedId] = useState(null);
 
     const handleCopy = (text, id) => {
-        navigator.clipboard.writeText(text);
+        copyToClipboard(text);
         setCopiedId(id);
         setTimeout(() => setCopiedId(null), 1500);
     };

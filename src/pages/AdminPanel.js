@@ -37,6 +37,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import LinkIcon from '@mui/icons-material/Link';
+import { copyToClipboard } from '../utils/clipboard';
 
 const inputSx = {
     '& .MuiOutlinedInput-root': {
@@ -319,7 +320,7 @@ const AdminPanel = () => {
     }, [tab]); // eslint-disable-line
 
     const copyUrl = (url) => {
-        navigator.clipboard.writeText(url);
+        copyToClipboard(url);
         setCopiedUrl(url);
         setTimeout(() => setCopiedUrl(null), 1500);
     };
